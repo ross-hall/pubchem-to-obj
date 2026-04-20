@@ -1,0 +1,302 @@
+
+<style>
+  #app { padding: 1.5rem 0; max-width: 600px; }
+  .field { margin-bottom: 1rem; }
+  .field label { display: block; font-size: 13px; color: var(--color-text-secondary); margin-bottom: 6px; }
+  .row { display: flex; gap: 10px; }
+  .row input { flex: 1; }
+  select { width: 100%; }
+  .status { font-size: 13px; margin-top: 1rem; min-height: 20px; color: var(--color-text-secondary); }
+  .status.error { color: var(--color-text-danger); }
+  .status.ok { color: var(--color-text-success); }
+  #info-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 1.25rem 0; }
+  .stat { background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 0.75rem 1rem; }
+  .stat .val { font-size: 22px; font-weight: 500; }
+  .stat .lbl { font-size: 12px; color: var(--color-text-secondary); margin-top: 2px; }
+  #preview { width: 100%; height: 260px; border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); background: var(--color-background-secondary); position: relative; overflow: hidden; }
+  canvas { display: block; }
+  .dl-row { display: flex; gap: 8px; margin-top: 1rem; }
+  .dl-row button { flex: 1; }
+  button.primary { background: var(--color-background-primary); border: 0.5px solid var(--color-border-secondary); }
+</style>
+
+<div id="app">
+  <h2 class="sr-only">PubChem CID to OBJ converter</h2>
+
+  <div class="field">
+    <label>PubChem CID</label>
+    <div class="row">
+      <input type="text" id="cid-input" placeholder="e.g. 2244 (Aspirin)" value="146156642" />
+      <button onclick="run()">Convert ↗</button>
+    </div>
+  </div>
+
+  <div class="field">
+    <label>Style</label>
+    <select id="style-sel">
+      <option value="ball">Ball-and-stick</option>
+      <option value="spacefill">Space-filling</option>
+      <option value="wire">Wireframe</option>
+    </select>
+  </div>
+
+  <div id="status" class="status">Enter a CID and click Convert.</div>
+
+  <div id="info-grid" style="display:none">
+    <div class="stat"><div class="val" id="s-atoms">—</div><div class="lbl">atoms</div></div>
+    <div class="stat"><div class="val" id="s-bonds">—</div><div class="lbl">bonds</div></div>
+    <div class="stat"><div class="val" id="s-heavy">—</div><div class="lbl">heavy atoms</div></div>
+    <div class="stat"><div class="val" id="s-name">—</div><div class="lbl">formula</div></div>
+  </div>
+
+  <div id="preview" style="display:none">
+    <canvas id="mol-canvas"></canvas>
+  </div>
+
+  <div id="dl-row" class="dl-row" style="display:none">
+    <button class="primary" onclick="downloadFile('obj')">Download .obj</button>
+    <button class="primary" onclick="downloadFile('mtl')">Download .mtl</button>
+  </div>
+</div>
+
+<script>
+const ELEM = {
+  H:  {r:0.31, col:[0.88,0.88,0.88]},
+  C:  {r:0.77, col:[0.25,0.25,0.25]},
+  N:  {r:0.75, col:[0.25,0.45,1.0]},
+  O:  {r:0.73, col:[1.0,0.18,0.18]},
+  S:  {r:1.02, col:[1.0,0.8,0.2]},
+  P:  {r:1.06, col:[1.0,0.5,0.0]},
+  F:  {r:0.64, col:[0.4,1.0,0.4]},
+  Cl: {r:0.99, col:[0.1,0.9,0.1]},
+  Br: {r:1.14, col:[0.6,0.1,0.1]},
+  I:  {r:1.33, col:[0.6,0.0,0.6]},
+};
+const DEF = {r:0.77, col:[0.6,0.6,0.6]};
+
+let _atoms=[], _bonds=[], _objText='', _mtlText='';
+
+function setStatus(msg, type='') {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = 'status ' + type;
+}
+
+async function run() {
+  const cid = document.getElementById('cid-input').value.trim();
+  if (!cid || isNaN(cid)) { setStatus('Please enter a valid CID number.', 'error'); return; }
+  setStatus('Fetching 3D structure from PubChem…');
+  document.getElementById('info-grid').style.display = 'none';
+  document.getElementById('preview').style.display = 'none';
+  document.getElementById('dl-row').style.display = 'none';
+
+  try {
+    const url = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${cid}/record/SDF?record_type=3d`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`PubChem returned ${res.status}. The CID may not exist or have no 3D data.`);
+    const sdf = await res.text();
+    if (sdf.includes('PUGREST.NotFound') || sdf.includes('Status: 404')) throw new Error('CID not found in PubChem.');
+
+    const {atoms, bonds} = parseSDF(sdf);
+    _atoms = atoms; _bonds = bonds;
+
+    const style = document.getElementById('style-sel').value;
+    const {obj, mtl} = buildOBJ(atoms, bonds, style, cid);
+    _objText = obj; _mtlText = mtl;
+
+    const heavyCount = atoms.filter(a => a.elem !== 'H').length;
+    const formula = buildFormula(atoms);
+    document.getElementById('s-atoms').textContent = atoms.length;
+    document.getElementById('s-bonds').textContent = bonds.length;
+    document.getElementById('s-heavy').textContent = heavyCount;
+    document.getElementById('s-name').textContent = formula;
+    document.getElementById('info-grid').style.display = 'grid';
+
+    document.getElementById('preview').style.display = 'block';
+    document.getElementById('dl-row').style.display = 'flex';
+    drawPreview(atoms, bonds, style);
+    setStatus(`Done! CID ${cid} converted successfully.`, 'ok');
+  } catch(e) {
+    setStatus(e.message, 'error');
+  }
+}
+
+function buildFormula(atoms) {
+  const counts = {};
+  atoms.forEach(a => { if(a.elem!=='H') counts[a.elem]=(counts[a.elem]||0)+1; });
+  const hc = atoms.filter(a=>a.elem==='H').length;
+  let s = '';
+  if(counts['C']) { s += 'C'; if(counts['C']>1) s+=counts['C']; delete counts['C']; }
+  if(hc) { s += 'H'; if(hc>1) s+=hc; }
+  Object.keys(counts).sort().forEach(k=>{ s+=k; if(counts[k]>1) s+=counts[k]; });
+  return s || '?';
+}
+
+function parseSDF(sdf) {
+  const lines = sdf.split('\n');
+  const counts = lines[3];
+  const nAtoms = parseInt(counts.substring(0,3));
+  const nBonds = parseInt(counts.substring(3,6));
+  const atoms = [];
+  for (let i=4; i<4+nAtoms; i++) {
+    const l = lines[i];
+    const x = parseFloat(l.substring(0,10));
+    const y = parseFloat(l.substring(10,20));
+    const z = parseFloat(l.substring(20,30));
+    const elem = l.substring(31,34).trim();
+    atoms.push({x,y,z,elem});
+  }
+  const bonds = [];
+  for (let i=4+nAtoms; i<4+nAtoms+nBonds; i++) {
+    const l = lines[i];
+    const a1 = parseInt(l.substring(0,3))-1;
+    const a2 = parseInt(l.substring(3,6))-1;
+    const order = parseInt(l.substring(6,9));
+    bonds.push({a1,a2,order});
+  }
+  return {atoms, bonds};
+}
+
+function sphereMesh(cx,cy,cz,r,stacks=8,slices=10) {
+  const v=[], f=[];
+  for(let i=0;i<=stacks;i++) {
+    const phi = Math.PI*i/stacks;
+    for(let j=0;j<slices;j++) {
+      const th = 2*Math.PI*j/slices;
+      v.push([cx+r*Math.sin(phi)*Math.cos(th), cy+r*Math.sin(phi)*Math.sin(th), cz+r*Math.cos(phi)]);
+    }
+  }
+  for(let i=0;i<stacks;i++) for(let j=0;j<slices;j++) {
+    const a=i*slices+j, b=i*slices+(j+1)%slices, c=(i+1)*slices+(j+1)%slices, d=(i+1)*slices+j;
+    f.push([a,b,c,d]);
+  }
+  return {v,f};
+}
+
+function cylMesh(p1,p2,r,slices=7) {
+  const dx=p2[0]-p1[0], dy=p2[1]-p1[1], dz=p2[2]-p1[2];
+  const len=Math.sqrt(dx*dx+dy*dy+dz*dz);
+  if(len<1e-6) return {v:[],f:[]};
+  const ux=dx/len,uy=dy/len,uz=dz/len;
+  let px,py,pz;
+  if(Math.abs(ux)<0.9){px=1;py=0;pz=0;}else{px=0;py=1;pz=0;}
+  let ex=uy*pz-uz*py,ey=uz*px-ux*pz,ez=ux*py-uy*px;
+  const el=Math.sqrt(ex*ex+ey*ey+ez*ez); ex/=el;ey/=el;ez/=el;
+  const fx=uy*ez-uz*ey,fy=uz*ex-ux*ez,fz=ux*ey-uy*ex;
+  const v=[];
+  for(const cp of [p1,p2]) {
+    for(let j=0;j<slices;j++) {
+      const a=2*Math.PI*j/slices, c2=Math.cos(a),s2=Math.sin(a);
+      v.push([cp[0]+r*(c2*ex+s2*fx), cp[1]+r*(c2*ey+s2*fy), cp[2]+r*(c2*ez+s2*fz)]);
+    }
+  }
+  const f=[];
+  for(let j=0;j<slices;j++) {
+    f.push([j,(j+1)%slices,slices+(j+1)%slices,slices+j]);
+  }
+  return {v,f};
+}
+
+function buildOBJ(atoms, bonds, style, cid) {
+  const BALL=0.4, BOND_R=0.08, VDW_SCALE=0.9;
+  const VDW = {H:1.2,C:1.7,N:1.55,O:1.52,S:1.8,P:1.8,F:1.47,Cl:1.75,Br:1.85,I:1.98};
+
+  const elems = [...new Set(atoms.map(a=>a.elem))].sort();
+  let mtl = '# Molecular material\n';
+  elems.forEach(e=>{
+    const d=ELEM[e]||DEF;
+    mtl+=`\nnewmtl mat_${e}\nKd ${d.col[0].toFixed(3)} ${d.col[1].toFixed(3)} ${d.col[2].toFixed(3)}\nKa ${(d.col[0]*0.15).toFixed(3)} ${(d.col[1]*0.15).toFixed(3)} ${(d.col[2]*0.15).toFixed(3)}\nKs 0.3 0.3 0.3\nNs 50\n`;
+  });
+  mtl += '\nnewmtl mat_bond\nKd 0.65 0.65 0.65\nKa 0.1 0.1 0.1\nKs 0.2 0.2 0.2\nNs 30\n';
+
+  let obj = `# CID ${cid} | style: ${style}\nmtllib CID_${cid}.mtl\n\n`;
+  let voff = 1;
+
+  if (style !== 'wire') {
+    elems.forEach(e=>{
+      obj += `usemtl mat_${e}\ng atoms_${e}\n`;
+      atoms.forEach(a=>{
+        if(a.elem!==e) return;
+        const R = style==='spacefill' ? (VDW[e]||1.7)*VDW_SCALE : (ELEM[e]||DEF).r*BALL;
+        const {v,f} = sphereMesh(a.x,a.y,a.z,R);
+        v.forEach(([vx,vy,vz])=>{ obj+=`v ${vx.toFixed(4)} ${vy.toFixed(4)} ${vz.toFixed(4)}\n`; });
+        f.forEach(fc=>{ obj+=`f ${fc.map(i=>i+voff).join(' ')}\n`; });
+        voff+=v.length;
+      });
+    });
+  }
+
+  if (style !== 'spacefill') {
+    obj += 'usemtl mat_bond\ng bonds\n';
+    bonds.forEach(({a1,a2})=>{
+      const A=atoms[a1],B=atoms[a2];
+      if(!A||!B) return;
+      const {v,f} = style==='wire'
+        ? cylMesh([A.x,A.y,A.z],[B.x,B.y,B.z],0.04)
+        : cylMesh([A.x,A.y,A.z],[B.x,B.y,B.z],BOND_R);
+      v.forEach(([vx,vy,vz])=>{ obj+=`v ${vx.toFixed(4)} ${vy.toFixed(4)} ${vz.toFixed(4)}\n`; });
+      f.forEach(fc=>{ obj+=`f ${fc.map(i=>i+voff).join(' ')}\n`; });
+      voff+=v.length;
+    });
+  }
+
+  return {obj, mtl};
+}
+
+function downloadFile(type) {
+  const cid = document.getElementById('cid-input').value.trim();
+  const content = type==='obj' ? _objText : _mtlText;
+  const fname = `CID_${cid}.${type}`;
+  const blob = new Blob([content], {type:'text/plain'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = fname;
+  a.click();
+}
+
+function drawPreview(atoms, bonds, style) {
+  const canvas = document.getElementById('mol-canvas');
+  const wrap = document.getElementById('preview');
+  canvas.width = wrap.clientWidth;
+  canvas.height = 260;
+  const ctx = canvas.getContext('2d');
+  const W=canvas.width, H=canvas.height;
+
+  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+  atoms.forEach(a=>{ minX=Math.min(minX,a.x);maxX=Math.max(maxX,a.x);minY=Math.min(minY,a.y);maxY=Math.max(maxY,a.y); });
+  const scale = Math.min((W-60)/(maxX-minX||1),(H-60)/(maxY-minY||1));
+  const ox = W/2 - (minX+maxX)/2*scale;
+  const oy = H/2 + (minY+maxY)/2*scale;
+  const px = x => x*scale+ox;
+  const py = y => -y*scale+oy;
+
+  ctx.clearRect(0,0,W,H);
+
+  if (style !== 'spacefill') {
+    ctx.lineWidth = style==='wire' ? 1 : 2;
+    bonds.forEach(({a1,a2})=>{
+      const A=atoms[a1],B=atoms[a2];
+      if(!A||!B) return;
+      ctx.strokeStyle = '#888';
+      ctx.beginPath();
+      ctx.moveTo(px(A.x),py(A.y));
+      ctx.lineTo(px(B.x),py(B.y));
+      ctx.stroke();
+    });
+  }
+
+  if (style !== 'wire') {
+    atoms.forEach(a=>{
+      const d=ELEM[a.elem]||DEF;
+      const R = style==='spacefill' ? Math.max(6,(d.r*scale*1.1)) : Math.max(3,d.r*scale*0.55);
+      const [r,g,b]=d.col;
+      ctx.fillStyle=`rgb(${Math.round(r*220)},${Math.round(g*220)},${Math.round(b*220)})`;
+      ctx.beginPath();
+      ctx.arc(px(a.x),py(a.y),R,0,Math.PI*2);
+      ctx.fill();
+    });
+  }
+}
+
+document.getElementById('cid-input').addEventListener('keydown', e=>{ if(e.key==='Enter') run(); });
+</script>
