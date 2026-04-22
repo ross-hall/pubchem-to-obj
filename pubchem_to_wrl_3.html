@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PubChem → WRL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root {
+  --bg:#07090f;--surface:#0d1117;--card:#111622;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
+  --accent:#00d4aa;--accent2:#0097a7;
+  --text:#dde4f0;--muted:#5a6580;--danger:#ff5566;--success:#00d4aa;
+  --mono:'IBM Plex Mono',monospace;--sans:'IBM Plex Sans',sans-serif;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:2.5rem 1.25rem 4rem;}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,212,170,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,212,170,0.03) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0;}
+.wrap{position:relative;z-index:1;width:100%;max-width:560px;}
+header{text-align:center;margin-bottom:2.25rem;}
+.eyebrow{font-family:var(--mono);font-size:0.65rem;letter-spacing:0.18em;color:var(--accent);text-transform:uppercase;margin-bottom:0.6rem;}
+h1{font-family:var(--mono);font-size:clamp(1.5rem,5vw,2.1rem);font-weight:600;color:var(--text);letter-spacing:-0.03em;}
+h1 .arr{color:var(--accent);margin:0 0.15em;}
+header p{margin-top:0.4rem;font-size:0.85rem;color:var(--muted);font-weight:300;}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:1.75rem;margin-bottom:1rem;}
+.field{margin-bottom:1.25rem;}.field:last-child{margin-bottom:0;}
+label{display:block;font-family:var(--mono);font-size:0.65rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:0.45rem;}
+input[type="text"]{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0.65rem 0.9rem;color:var(--text);font-family:var(--mono);font-size:0.88rem;outline:none;transition:border-color 0.2s;}
+input[type="text"]:focus{border-color:var(--accent2);}
+input[type="text"]::placeholder{color:var(--muted);}
+.style-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;}
+.style-opt{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0.55rem 0.5rem;text-align:center;font-family:var(--mono);font-size:0.7rem;color:var(--muted);cursor:pointer;transition:all 0.15s;user-select:none;}
+.style-opt:hover{border-color:var(--border2);color:var(--text);}
+.style-opt.on{border-color:var(--accent);color:var(--accent);background:rgba(0,212,170,0.06);}
+.toggle-row{display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none;padding:0.55rem 0.75rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;transition:border-color 0.15s;}
+.toggle-row:hover{border-color:var(--border2);}
+.toggle-row.on{border-color:var(--accent);background:rgba(0,212,170,0.06);}
+.toggle-track{width:32px;height:18px;background:#1e2736;border-radius:9px;position:relative;flex-shrink:0;transition:background 0.2s;}
+.toggle-row.on .toggle-track{background:var(--accent2);}
+.toggle-thumb{width:12px;height:12px;background:#5a6580;border-radius:50%;position:absolute;top:3px;left:3px;transition:all 0.2s;}
+.toggle-row.on .toggle-thumb{left:17px;background:#fff;}
+.toggle-label{font-family:var(--mono);font-size:0.7rem;color:var(--muted);}
+.toggle-row.on .toggle-label{color:var(--accent);}
+.btn{display:block;width:100%;background:var(--accent);border:none;border-radius:8px;padding:0.75rem;color:#000;font-family:var(--mono);font-size:0.82rem;font-weight:600;letter-spacing:0.06em;cursor:pointer;transition:opacity 0.15s,transform 0.1s;}
+.btn:hover{opacity:0.85;}.btn:active{transform:scale(0.99);}.btn:disabled{opacity:0.3;cursor:not-allowed;transform:none;}
+.status{font-family:var(--mono);font-size:0.72rem;color:var(--muted);min-height:18px;margin-top:1rem;display:flex;align-items:center;gap:8px;}
+.status.err{color:var(--danger);}.status.ok{color:var(--success);}
+.spinner{width:10px;height:10px;border:1.5px solid var(--accent);border-top-color:transparent;border-radius:50%;animation:spin 0.6s linear infinite;flex-shrink:0;display:none;}
+.loading .spinner{display:block;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:1.25rem;}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0.7rem 0.5rem;text-align:center;}
+.stat .v{font-family:var(--mono);font-size:1.2rem;font-weight:600;color:var(--accent);}
+.stat .l{font-size:0.65rem;color:var(--muted);margin-top:3px;text-transform:uppercase;letter-spacing:0.06em;}
+.preview{margin-top:1.25rem;border:1px solid var(--border);border-radius:8px;background:var(--surface);overflow:hidden;position:relative;}
+.preview canvas{display:block;width:100%;}
+.preview-tag{position:absolute;bottom:7px;right:9px;font-family:var(--mono);font-size:0.6rem;color:var(--muted);pointer-events:none;}
+.dl-btn{display:block;width:100%;margin-top:1rem;background:transparent;border:1px solid var(--accent);border-radius:8px;padding:0.7rem;color:var(--accent);font-family:var(--mono);font-size:0.78rem;font-weight:600;letter-spacing:0.06em;cursor:pointer;transition:background 0.15s;}
+.dl-btn:hover{background:rgba(0,212,170,0.08);}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:0.7rem;}
+.chip{font-family:var(--mono);font-size:0.66rem;color:var(--muted);border:1px solid var(--border);border-radius:20px;padding:3px 10px;cursor:pointer;transition:all 0.12s;}
+.chip:hover{color:var(--text);border-color:var(--border2);}
+.sep{border:none;border-top:1px solid var(--border);margin:1.25rem 0;}
+.note{font-size:0.72rem;color:var(--muted);line-height:1.6;margin-top:0.6rem;}
+.note a{color:var(--accent);text-decoration:none;}.note a:hover{text-decoration:underline;}
+.tabs{display:flex;border-bottom:1px solid var(--border);margin-bottom:1.25rem;}
+.tab{font-family:var(--mono);font-size:0.68rem;letter-spacing:0.08em;text-transform:uppercase;padding:0.45rem 1rem;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;background:none;border-top:none;border-left:none;border-right:none;transition:color 0.15s;}
+.tab.on{color:var(--accent);border-bottom-color:var(--accent);}
+.tab:hover:not(.on){color:var(--text);}
+.pane{display:none;}.pane.on{display:block;}
+textarea{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0.65rem 0.9rem;color:var(--text);font-family:var(--mono);font-size:0.7rem;outline:none;resize:vertical;min-height:120px;line-height:1.6;transition:border-color 0.2s;}
+textarea:focus{border-color:var(--accent2);}
+textarea::placeholder{color:var(--muted);}
+footer{margin-top:2rem;font-family:var(--mono);font-size:0.65rem;color:var(--muted);text-align:center;letter-spacing:0.06em;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Molecular Structure Export</div>
+    <h1>PubChem <span class="arr">→</span> WRL</h1>
+    <p>Convert any compound to VRML 2.0 for 3D viewers</p>
+  </header>
+
+  <div class="card">
+    <div class="tabs">
+      <button class="tab on" onclick="switchTab('cid',this)">CID Lookup</button>
+      <button class="tab" onclick="switchTab('sdf',this)">Paste SDF</button>
+    </div>
+
+    <div id="pane-cid" class="pane on">
+      <div class="field">
+        <label>PubChem CID</label>
+        <input type="text" id="cid-in" placeholder="e.g. 2244" />
+        <div class="chips">
+          <span class="chip" onclick="pick('2244')">2244 · Aspirin</span>
+          <span class="chip" onclick="pick('5793')">5793 · Glucose</span>
+          <span class="chip" onclick="pick('962')">962 · Water</span>
+          <span class="chip" onclick="pick('5280445')">5280445 · Quercetin</span>
+          <span class="chip" onclick="pick('146156642')">146156642</span>
+        </div>
+        <p class="note" style="margin-top:0.65rem">
+          If fetch fails (CORS), use the <strong style="color:var(--text)">Paste SDF</strong> tab.<br>
+          SDF source: <a href="https://pubchem.ncbi.nlm.nih.gov" target="_blank">pubchem.ncbi.nlm.nih.gov</a> → compound → 3D Conformer → Download SDF.
+        </p>
+      </div>
+    </div>
+
+    <div id="pane-sdf" class="pane">
+      <div class="field">
+        <label>SDF content</label>
+        <textarea id="sdf-in" placeholder="Paste the full contents of a .sdf file here…"></textarea>
+        <p class="note" style="margin-top:0.5rem">
+          Or open this in your browser and copy all:<br>
+          <code style="color:var(--accent);font-size:0.65rem">pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/[CID]/record/SDF?record_type=3d</code>
+        </p>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Style</label>
+      <div class="style-grid">
+        <div class="style-opt on" data-s="ball" onclick="pickStyle(this)">Ball-and-stick</div>
+        <div class="style-opt" data-s="spacefill" onclick="pickStyle(this)">Space-filling</div>
+        <div class="style-opt" data-s="wire" onclick="pickStyle(this)">Wireframe</div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Options</label>
+      <div class="toggle-row" id="h-toggle" onclick="toggleH()">
+        <div class="toggle-track"><div class="toggle-thumb"></div></div>
+        <span class="toggle-label">Hide hydrogens &amp; H-bonds</span>
+      </div>
+    </div>
+
+    <button class="btn" id="go-btn" onclick="run()">Generate WRL</button>
+    <div id="status" class="status"><span class="spinner"></span><span id="status-text">—</span></div>
+
+    <div id="stats" class="stats" style="display:none">
+      <div class="stat"><div class="v" id="s-a">—</div><div class="l">Atoms</div></div>
+      <div class="stat"><div class="v" id="s-b">—</div><div class="l">Bonds</div></div>
+      <div class="stat"><div class="v" id="s-h">—</div><div class="l">Heavy</div></div>
+      <div class="stat"><div class="v" id="s-f" style="font-size:0.78rem;padding-top:4px">—</div><div class="l">Formula</div></div>
+    </div>
+
+    <div id="preview" class="preview" style="display:none">
+      <canvas id="cv" height="230"></canvas>
+      <span class="preview-tag">XY projection</span>
+    </div>
+
+    <hr class="sep" id="sep" style="display:none">
+    <button class="dl-btn" id="dl-btn" style="display:none" onclick="doDownload()">↓ Download .wrl</button>
+  </div>
+
+  <footer>VRML 2.0 · data via PubChem PUG REST</footer>
+</div>
+
+<script>
+const EL={
+  H:{r:0.31,vdw:1.20,c:[0.88,0.88,0.88]},C:{r:0.77,vdw:1.70,c:[0.18,0.18,0.18]},
+  N:{r:0.75,vdw:1.55,c:[0.20,0.40,1.00]},O:{r:0.73,vdw:1.52,c:[1.00,0.18,0.18]},
+  S:{r:1.02,vdw:1.80,c:[1.00,0.80,0.20]},P:{r:1.06,vdw:1.80,c:[1.00,0.50,0.00]},
+  F:{r:0.64,vdw:1.47,c:[0.40,1.00,0.40]},Cl:{r:0.99,vdw:1.75,c:[0.10,0.90,0.10]},
+  Br:{r:1.14,vdw:1.85,c:[0.60,0.10,0.10]},I:{r:1.33,vdw:1.98,c:[0.55,0.00,0.55]},
+};
+const DEF={r:0.77,vdw:1.70,c:[0.60,0.60,0.60]};
+const BOND_COL=[0.55,0.55,0.60];
+const BALL=0.40, BOND_R=0.07;
+
+let style='ball', tab='cid', hideH=false, _atoms=[], _bonds=[], _wrl='', _cid='compound';
+
+function pick(v){document.getElementById('cid-in').value=v;}
+function pickStyle(el){document.querySelectorAll('.style-opt').forEach(e=>e.classList.remove('on'));el.classList.add('on');style=el.dataset.s;}
+function toggleH(){hideH=!hideH;document.getElementById('h-toggle').classList.toggle('on',hideH);}
+function switchTab(name,el){tab=name;document.querySelectorAll('.tab').forEach(e=>e.classList.remove('on'));document.querySelectorAll('.pane').forEach(e=>e.classList.remove('on'));el.classList.add('on');document.getElementById('pane-'+name).classList.add('on');}
+function setStatus(msg,type=''){const el=document.getElementById('status');el.className='status '+type;document.getElementById('status-text').textContent=msg;}
+function hide(...ids){ids.forEach(id=>{const e=document.getElementById(id);if(e)e.style.display='none';});}
+function show(id,d='block'){document.getElementById(id).style.display=d;}
+
+// ── Fetch with proxy fallback ──────────────────────────────────
+async function fetchSDF(cid){
+  const direct=`https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${cid}/record/SDF?record_type=3d`;
+  const attempts=[
+    {url:direct,label:'direct'},
+    {url:`https://corsproxy.io/?${encodeURIComponent(direct)}`,label:'corsproxy.io'},
+    {url:`https://api.allorigins.win/raw?url=${encodeURIComponent(direct)}`,label:'allorigins'},
+    {url:`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(direct)}`,label:'codetabs'},
+  ];
+  async function tryUrl(url,label){
+    setStatus(`Trying ${label}…`,'loading');
+    const res=await fetch(url,{signal:AbortSignal.timeout(10000)});
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const text=await res.text();
+    if(text.includes('PUGREST.NotFound')||text.includes('"code":404')) throw new Error('CID not found in PubChem.');
+    if(!text.includes('V2000')) throw new Error('Invalid SDF response.');
+    return text;
+  }
+  for(const {url,label} of attempts){
+    try{return await tryUrl(url,label);}
+    catch(e){if(e.message.includes('not found')) throw e;}
+  }
+  throw new Error('All fetch attempts failed — use the Paste SDF tab instead.');
+}
+
+// ── Parse SDF ─────────────────────────────────────────────────
+function parseSDF(sdf){
+  const lines=sdf.split('\n');
+  const nA=parseInt(lines[3].substring(0,3));
+  const nB=parseInt(lines[3].substring(3,6));
+  const atoms=[],bonds=[];
+  for(let i=4;i<4+nA;i++){
+    const l=lines[i];
+    atoms.push({x:parseFloat(l.substring(0,10)),y:parseFloat(l.substring(10,20)),z:parseFloat(l.substring(20,30)),e:l.substring(31,34).trim()});
+  }
+  for(let i=4+nA;i<4+nA+nB;i++){
+    const l=lines[i];
+    bonds.push({a:parseInt(l.substring(0,3))-1,b:parseInt(l.substring(3,6))-1});
+  }
+  return{atoms,bonds};
+}
+
+function formula(atoms){
+  const c={},hc=atoms.filter(a=>a.e==='H').length;
+  atoms.forEach(a=>{if(a.e!=='H')c[a.e]=(c[a.e]||0)+1;});
+  let s='';
+  if(c.C){s+='C';if(c.C>1)s+=c.C;delete c.C;}
+  if(hc){s+='H';if(hc>1)s+=hc;}
+  Object.keys(c).sort().forEach(k=>{s+=k;if(c[k]>1)s+=c[k];});
+  return s||'?';
+}
+
+// ── VRML helpers ──────────────────────────────────────────────
+function f4(n){return n.toFixed(5);}
+function fc(c){return`${c[0].toFixed(3)} ${c[1].toFixed(3)} ${c[2].toFixed(3)}`;}
+
+function wrlSphere(x,y,z,r,col){
+  return(
+`Transform {
+  translation ${f4(x)} ${f4(y)} ${f4(z)}
+  children [ Shape {
+    appearance Appearance { material Material {
+      diffuseColor ${fc(col)} specularColor 0.3 0.3 0.3 shininess 0.4 } }
+    geometry Sphere { radius ${f4(r)} }
+  } ]
+}`);
+}
+
+// Robust Y-axis to bond-vector rotation using cross product
+function bondRotation(dx,dy,dz,len){
+  // Unit bond vector
+  const bx=dx/len, by=dy/len, bz=dz/len;
+  // VRML cylinder default axis is Y = (0,1,0)
+  // Rotation axis = Y cross b = (1,0,0) cross (bx,by,bz)
+  // Y cross b = (0*bz - 1*bz, 1*bx - 0*bz, 0*by - 1*bx)
+  //           = (-bz, 0, bx)  ... wait, correct cross:
+  // Y=(0,1,0), b=(bx,by,bz)
+  // Y x b = (1*bz - 0*by, 0*bx - 0*bz, 0*by - 1*bx)
+  //       = (bz, 0, -bx)
+  const ax=bz, ay=0, az=-bx;
+  const axLen=Math.sqrt(ax*ax+az*az); // ay is always 0
+  const angle=Math.acos(Math.max(-1,Math.min(1,by)));
+
+  if(axLen < 1e-7){
+    // Bond is parallel to Y (pointing up or down)
+    if(by > 0) return '0 1 0 0';           // no rotation needed
+    else        return '1 0 0 3.14159265'; // 180 degrees around X
+  }
+  return `${f4(ax/axLen)} 0 ${f4(az/axLen)} ${f4(angle)}`;
+}
+
+function wrlCylinder(x1,y1,z1,x2,y2,z2,r,col){
+  const dx=x2-x1, dy=y2-y1, dz=z2-z1;
+  const len=Math.sqrt(dx*dx+dy*dy+dz*dz);
+  if(len<1e-6) return '';
+  const mx=(x1+x2)/2, my=(y1+y2)/2, mz=(z1+z2)/2;
+  const rot=bondRotation(dx,dy,dz,len);
+  return(
+`Transform {
+  translation ${f4(mx)} ${f4(my)} ${f4(mz)}
+  rotation ${rot}
+  children [ Shape {
+    appearance Appearance { material Material {
+      diffuseColor ${fc(col)} specularColor 0.2 0.2 0.2 shininess 0.3 } }
+    geometry Cylinder { radius ${f4(r)} height ${f4(len)} }
+  } ]
+}`);
+}
+
+// ── Build WRL ─────────────────────────────────────────────────
+function buildWRL(atoms,bonds,style,cid,hideH){
+  const visIdx=new Set(atoms.map((a,i)=>(!hideH||a.e!=='H')?i:-1).filter(i=>i!==-1));
+  const visAtoms=atoms.filter((_,i)=>visIdx.has(i));
+  const visBonds=bonds.filter(({a,b})=>visIdx.has(a)&&visIdx.has(b));
+
+  const out=[
+    '#VRML V2.0 utf8',
+    `# PubChem CID ${cid}  |  style: ${style}${hideH?' | no-H':''}`,
+    '# Generated by pubchem-to-wrl.html',
+    '',
+    'Background { skyColor [ 0.05 0.05 0.08 ] }',
+    'NavigationInfo { headlight TRUE type [ "EXAMINE" "ANY" ] }',
+    '',
+  ];
+
+  if(style!=='wire'){
+    out.push('# Atoms');
+    visAtoms.forEach(({x,y,z,e})=>{
+      const d=EL[e]||DEF;
+      const r=style==='spacefill'?d.vdw*0.85:d.r*BALL;
+      out.push(wrlSphere(x,y,z,r,d.c));
+    });
+    out.push('');
+  }
+
+  if(style!=='spacefill'){
+    out.push('# Bonds');
+    const br=style==='wire'?0.04:BOND_R;
+    visBonds.forEach(({a,b})=>{
+      const A=atoms[a],B=atoms[b];
+      if(A&&B) out.push(wrlCylinder(A.x,A.y,A.z,B.x,B.y,B.z,br,BOND_COL));
+    });
+  }
+
+  return out.join('\n');
+}
+
+// ── Preview ───────────────────────────────────────────────────
+function drawPreview(atoms,bonds,style,hideH){
+  const visIdx=new Set(atoms.map((a,i)=>(!hideH||a.e!=='H')?i:-1).filter(i=>i!==-1));
+  const visAtoms=atoms.filter((_,i)=>visIdx.has(i));
+  const visBonds=bonds.filter(({a,b})=>visIdx.has(a)&&visIdx.has(b));
+  const cv=document.getElementById('cv');
+  cv.width=cv.offsetWidth||500;
+  const W=cv.width,H=cv.height,ctx=cv.getContext('2d');
+  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+  visAtoms.forEach(a=>{minX=Math.min(minX,a.x);maxX=Math.max(maxX,a.x);minY=Math.min(minY,a.y);maxY=Math.max(maxY,a.y);});
+  const sc=Math.min((W-50)/(maxX-minX||1),(H-40)/(maxY-minY||1));
+  const ox=W/2-(minX+maxX)/2*sc,oy=H/2+(minY+maxY)/2*sc;
+  const px=x=>x*sc+ox,py=y=>-y*sc+oy;
+  ctx.clearRect(0,0,W,H);
+  if(style!=='spacefill'){
+    visBonds.forEach(({a,b})=>{
+      const A=atoms[a],B=atoms[b];if(!A||!B)return;
+      ctx.strokeStyle='#1e2e3a';ctx.lineWidth=style==='wire'?1:2;
+      ctx.beginPath();ctx.moveTo(px(A.x),py(A.y));ctx.lineTo(px(B.x),py(B.y));ctx.stroke();
+    });
+  }
+  if(style!=='wire'){
+    visAtoms.forEach(({x,y,e})=>{
+      const d=EL[e]||DEF;
+      const r=style==='spacefill'?Math.max(5,d.vdw*sc*0.85):Math.max(2.5,d.r*sc*BALL);
+      const[r0,g0,b0]=d.c;
+      ctx.fillStyle=`rgb(${Math.round(r0*210)},${Math.round(g0*210)},${Math.round(b0*210)})`;
+      ctx.beginPath();ctx.arc(px(x),py(y),r,0,Math.PI*2);ctx.fill();
+    });
+  }
+}
+
+// ── Download ──────────────────────────────────────────────────
+function doDownload(){
+  const blob=new Blob([_wrl],{type:'model/vrml'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`CID_${_cid}${hideH?'_noH':''}.wrl`;
+  a.click();
+}
+
+// ── Run ───────────────────────────────────────────────────────
+async function run(){
+  const btn=document.getElementById('go-btn');
+  btn.disabled=true;
+  hide('stats','preview','sep','dl-btn');
+  let sdf='';_cid='compound';
+  try{
+    if(tab==='sdf'){
+      sdf=document.getElementById('sdf-in').value.trim();
+      if(!sdf) throw new Error('Paste SDF content first.');
+      if(!sdf.includes('V2000')) throw new Error('Does not look like a valid SDF file.');
+      const m=sdf.match(/PUBCHEM_COMPOUND_CID\s*\n(\d+)/);
+      if(m)_cid=m[1];
+    }else{
+      _cid=document.getElementById('cid-in').value.trim();
+      if(!_cid||isNaN(_cid)) throw new Error('Enter a valid numeric CID.');
+      setStatus('Fetching from PubChem…','loading');
+      sdf=await fetchSDF(_cid);
+    }
+    setStatus('Parsing structure…','loading');
+    await new Promise(r=>setTimeout(r,0));
+    const{atoms,bonds}=parseSDF(sdf);
+    _atoms=atoms;_bonds=bonds;
+
+    setStatus('Building VRML…','loading');
+    await new Promise(r=>setTimeout(r,0));
+    _wrl=buildWRL(atoms,bonds,style,_cid,hideH);
+
+    const visIdx=new Set(atoms.map((a,i)=>(!hideH||a.e!=='H')?i:-1).filter(i=>i!==-1));
+    const dispAtoms=atoms.filter((_,i)=>visIdx.has(i));
+    const dispBonds=bonds.filter(({a,b})=>visIdx.has(a)&&visIdx.has(b));
+
+    document.getElementById('s-a').textContent=dispAtoms.length;
+    document.getElementById('s-b').textContent=dispBonds.length;
+    document.getElementById('s-h').textContent=atoms.filter(a=>a.e!=='H').length;
+    document.getElementById('s-f').textContent=formula(atoms);
+    show('stats','grid');
+    show('preview');
+    drawPreview(atoms,bonds,style,hideH);
+    show('sep');show('dl-btn');
+    document.getElementById('dl-btn').textContent=`↓ Download CID_${_cid}${hideH?'_noH':''}.wrl`;
+    setStatus(`✓ Done — ${dispAtoms.length} atoms, ${dispBonds.length} bonds${hideH?' (H hidden)':''}`,'ok');
+  }catch(e){
+    setStatus(e.message,'err');
+  }finally{
+    btn.disabled=false;
+  }
+}
+
+document.getElementById('cid-in').addEventListener('keydown',e=>{if(e.key==='Enter')run();});
+</script>
+</body>
+</html>
